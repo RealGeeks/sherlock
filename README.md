@@ -1,24 +1,24 @@
 # Sherlock - Shared lock
 
-If one has the same program on multiple servers ensure only one is
-executing at a given time, Sherlock can help.
+Given the same script on multiple servers, Shelock ensures only one
+will run at a given time. Particularly useful with cronjobs.
 
 ## Usage
 
-    $ distmutex python myscript.py arg1 arg2
+    $ sherlock python myscript.py arg1 arg2
 
-will run the script 'python myscript.py arg1 arg2' and exit with the
+will run the script `python myscript.py arg1 arg2` and exit with the
 same exit status as the script.
 
 If other machine tries to execute the same line above it will wait
 until the first one finishes.
 
-It's possible to prevent other machines to run whatsoever with '-once'
+It's possible to prevent other machines to run whatsoever with `-once`
 parameter.
 
-If `N` machines run the following line at the same time:
+If N machines run the following line at the same time:
 
-    $ distmutex -once python myscript.py arg1 arg2
+    $ sherlock -once python myscript.py arg1 arg2
 
 Only one machine will succeed. Others will not run the script. Note
 that this only prevents others from running while one of them is running.
@@ -33,7 +33,7 @@ Sherlock uses memcache to store a mutex flag.
 
 A comma separared list of memcached servers to be used.
 
-    $ MEMCACHE_SERVERS=server1:11211,server2:11211 distmutex python myscript.py
+    $ MEMCACHE_SERVERS=server1:11211,server2:11211 sherlock python myscript.py
 
 ### `MEMCACHE_KEY`
 
