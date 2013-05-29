@@ -31,6 +31,7 @@ import (
 	"syscall"
 	"time"
 	"fmt"
+	"strings"
 )
 
 var options = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -66,7 +67,7 @@ func Key() string {
 }
 
 func Servers() []string {
-	return []string{*servers}
+	return strings.Split(*servers, ",")
 }
 
 var (
@@ -122,8 +123,7 @@ func main() {
 	mutex := NewMemcLock()
 	err := mutex.Acquire()
 	if err != nil {
-		log.Print(err)
-		return
+		log.Panicf("Failed to acquire lock: %s", err)
 	}
 	defer mutex.Release()
 
