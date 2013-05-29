@@ -32,6 +32,7 @@ import (
 	"time"
 	"fmt"
 	"strings"
+	"runtime/debug"
 )
 
 var options = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -135,6 +136,13 @@ func run() int {
 		log.SetOutput(out)
 		defer out.Close()
 	}
+
+	// has to be after log setup otherwise logfile will be closed
+	defer func() {
+		if e := recover(); e != nil {
+			log.Printf("Recovered from panic: %s\n%s", e, debug.Stack())
+		}
+	}()
 
 	args := options.Args()
 	if len(args) == 0 {
