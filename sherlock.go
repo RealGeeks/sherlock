@@ -138,12 +138,16 @@ func run() int {
 
 	args := options.Args()
 	if len(args) == 0 {
-		log.Fatal("No program specified")
+		log.Fatal("No program specified. See -help.")
 	}
 
 	mutex := NewMemcLock()
 	err := mutex.Acquire()
 	if err != nil {
+		if err == ErrDuplicateAcquire {
+			log.Print(err)
+			return 0
+		}
 		log.Panicf("Failed to acquire lock: %s", err)
 	}
 	defer mutex.Release()
