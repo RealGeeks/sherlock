@@ -128,7 +128,7 @@ func run() int {
 	options.Parse(os.Args[1:])
 
 	if Logfile() != "stdout" {
-		out, err := os.OpenFile(Logfile(), os.O_RDWR | os.O_CREATE, 0666)
+		out, err := os.OpenFile(Logfile(), os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0666)
 		if err != nil {
 			panic(fmt.Sprintf("Cannot open log file %s: %s", Logfile(), err))
 		}
