@@ -40,6 +40,7 @@ var (
 	once    = options.Bool("once", false, "Do not run the program if lock is acquired by somebody else")
 	key     = options.String("memcache-key", "mutex-default", "Key to be used as lock in memcache")
 	servers = options.String("memcache-servers", "127.0.0.1:11211", "Comma separared list of memcache servers")
+	logfile = options.String("logfile", "stdout", "File to write log messages.")
 )
 
 func init() {
@@ -68,6 +69,10 @@ func Key() string {
 
 func Servers() []string {
 	return strings.Split(*servers, ",")
+}
+
+func Logfile() string {
+	return *logfile
 }
 
 var (
@@ -112,8 +117,17 @@ func (ml *MemcLock) Release() {
 	ml.memc.Delete(Key())
 }
 
-func main() {
+func run() int {
 	options.Parse(os.Args[1:])
+
+	if Logfile() != "stdout" {
+		out, err := os.OpenFile(Logfile(), os.O_RDWR | os.O_CREATE, 0666)
+		if err != nil {
+			panic(fmt.Sprintf("Cannot open log file %s: %s", Logfile(), err))
+		}
+		log.SetOutput(out)
+		defer out.Close()
+	}
 
 	args := options.Args()
 	if len(args) == 0 {
@@ -139,9 +153,9 @@ func main() {
 		log.Panicf("Could not determine exit status of process: %s", err)
 	}
 	status := state.Sys().(syscall.WaitStatus)
+	return status.ExitStatus()
+}
 
-	// Calling Release() here because Exit() will not run defereds,
-	// but I want to exit with same exit status as my child
-	mutex.Release()
-	os.Exit(status.ExitStatus())
+func main() {
+	os.Exit(run())
 }
