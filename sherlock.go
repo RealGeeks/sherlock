@@ -40,6 +40,7 @@ var (
 	once    = options.Bool("once", false, "Do not run the program if lock is acquired by somebody else")
 	key     = options.String("memcache-key", "mutex-default", "Key to be used as lock in memcache")
 	servers = options.String("memcache-servers", "127.0.0.1:11211", "Comma separared list of memcache servers")
+	verbose = options.Bool("verbose", false, "More verbose output")
 	logfile = options.String("logfile", "stdout", "File to write log messages.")
 )
 
@@ -75,6 +76,12 @@ func Logfile() string {
 	return *logfile
 }
 
+func Debug(v ...interface{}) {
+	if *verbose {
+		log.Print(v...)
+	}
+}
+
 var (
 	ErrDuplicateAcquire = errors.New("Acquired by somebody else and retry disabled with -once")
 )
@@ -96,14 +103,14 @@ func (ml *MemcLock) Acquire() error {
 			Expiration: 0,
 		})
 		if err == nil {
-			log.Print("Acquired")
+			Debug("Acquired")
 			return nil
 		}
 		if err == memcache.ErrNotStored {
 			if !Retry() {
 				return ErrDuplicateAcquire
 			} else {
-				log.Print("Retrying")
+				Debug("Retrying")
 				time.Sleep(100 * time.Millisecond)
 			}
 		} else {
@@ -113,7 +120,7 @@ func (ml *MemcLock) Acquire() error {
 }
 
 func (ml *MemcLock) Release() {
-	log.Print("Releasing")
+	Debug("Releasing")
 	ml.memc.Delete(Key())
 }
 
