@@ -95,7 +95,7 @@ func NewMemcLock() *MemcLock {
 }
 
 func (ml *MemcLock) Acquire() error {
-	log.Print("Acquiring lock")
+	Debug("Acquiring lock")
 	for {
 		err := ml.memc.Add(&memcache.Item{
 			Key:        Key(),
@@ -140,6 +140,7 @@ func run() int {
 	if len(args) == 0 {
 		log.Fatal("No program specified. See -help.")
 	}
+	log.Printf("Running %v", args)
 
 	mutex := NewMemcLock()
 	err := mutex.Acquire()
