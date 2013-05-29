@@ -50,3 +50,28 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
 ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE
 OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## Building the binaries
+
+As you can see on bin/ directory there is a binary for linux/amd64.
+
+Since I work on a Mac I need to cross compile sherlock to linux/amd64 to be able
+to run on CentOS on our servers.
+
+First you need to have [Go installed from source](http://golang.org/doc/install/source).
+Then get the scripts for cross compilation:
+
+    $ git clone git://github.com/davecheney/golang-crosscompile.git
+    $ source golang-crosscompile/crosscompile.bash
+
+Build Go for linux/amd64
+
+    $ go-crosscompile-build linux/amd64
+
+Now build sherlock for linux/amd64
+
+    $ cd $GOPATH/src/github.com/realgeeks/sherlock
+    $ go-linux-amd64 build -o bin/sherlock-linux-amd64
+
+For more details on cross compilation in Go see
+[this article](http://dave.cheney.net/2012/09/08/an-introduction-to-cross-compilation-with-go).
