@@ -5,9 +5,9 @@ will run at a given time. Particularly useful with cronjobs.
 
 ## Usage
 
-    $ sherlock python myscript.py arg1 arg2
+    $ sherlock /usr/bin/python ~/myscript.py arg1 arg2
 
-will run the script `python myscript.py arg1 arg2` and exit with the
+will run the script `/usr/bin/python ~/myscript.py arg1 arg2` and exit with the
 same exit status as the script.
 
 If other machine tries to execute the same line above it will wait
@@ -23,21 +23,7 @@ If N machines run the following line at the same time:
 Only one machine will succeed. Others will not run the script. Note
 that this only prevents others from running while one of them is running.
 
-This is useful to be used with cron.
-
-## Some environment variables can be used
-
-Sherlock uses memcache to store a mutex flag.
-
-### `MEMCACHE_SERVERS`
-
-A comma separared list of memcached servers to be used.
-
-    $ MEMCACHE_SERVERS=server1:11211,server2:11211 sherlock python myscript.py
-
-### `MEMCACHE_KEY`
-
-The key to be used on memcache as the lock. Defaults to `mutex-default`
+See all available options with `-help`.
 
 ## License
 
