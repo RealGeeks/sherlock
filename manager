@@ -17,7 +17,7 @@ function release() {
     notify "Building amd64 binary"
     source golang-crosscompile/crosscompile.bash
     go-linux-amd64 build -o bin/sherlock-linux-amd64
-    md5 bin/sherlock-linux-amd64 > bin/sherlock-linux-amd64.md5
+    md5 -q bin/sherlock-linux-amd64 > bin/sherlock-linux-amd64.md5
 }
 
 function notify() {
