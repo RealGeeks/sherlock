@@ -1,0 +1,31 @@
+#!/bin/bash
+
+function install() {
+    notify "Installing"
+    go install
+}
+
+function release() {
+    if [ ! -d "golang-crosscompile" ]; then
+        notify "Setting up environment for cross compilation"
+        git clone git://github.com/davecheney/golang-crosscompile.git
+        (
+            source golang-crosscompile/crosscompile.bash
+            go-crosscompile-build linux/amd64
+        )
+    fi
+    notify "Building amd64 binary"
+    source golang-crosscompile/crosscompile.bash
+    go-linux-amd64 build -o bin/sherlock-linux-amd64
+    md5 bin/sherlock-linux-amd64 > bin/sherlock-linux-amd64.md5
+}
+
+function notify() {
+    echo "~~> $1"
+}
+
+if [ -x "$1" ]; then
+    install
+else
+    $@
+fi
