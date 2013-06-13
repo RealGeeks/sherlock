@@ -25,14 +25,15 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"github.com/bradfitz/gomemcache/memcache"
 	"log"
 	"os"
+	"os/signal"
+	"runtime/debug"
+	"strings"
 	"syscall"
 	"time"
-	"fmt"
-	"strings"
-	"runtime/debug"
 )
 
 var options = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -50,12 +51,12 @@ func init() {
 }
 
 func Usage() {
-	fmt.Fprintf(os.Stderr, "%s: Distributed mutex using memcache.\n\n" +
-		"Given the same script on multiple servers, %s ensures only one\n" +
-		"will run at a given time. Particularly useful with cronjobs.\n\n" +
-		"Usage example:\n\n" +
-		"  $ %s /bin/date -u\n\n" +
-		"Documentation and source code at: http://github.com/realgeeks/sherlock\n\n" +
+	fmt.Fprintf(os.Stderr, "%s: Distributed mutex using memcache.\n\n"+
+		"Given the same script on multiple servers, %s ensures only one\n"+
+		"will run at a given time. Particularly useful with cronjobs.\n\n"+
+		"Usage example:\n\n"+
+		"  $ %s /bin/date -u\n\n"+
+		"Documentation and source code at: http://github.com/realgeeks/sherlock\n\n"+
 		"Options:\n",
 		os.Args[0], os.Args[0], os.Args[0])
 	options.PrintDefaults()
@@ -80,6 +81,12 @@ func Logfile() string {
 func Debug(v ...interface{}) {
 	if *verbose {
 		log.Print(v...)
+	}
+}
+
+func Debugf(fmt string, v ...interface{}) {
+	if *verbose {
+		log.Printf(fmt, v...)
 	}
 }
 
@@ -129,7 +136,7 @@ func run() int {
 	options.Parse(os.Args[1:])
 
 	if Logfile() != "stdout" {
-		out, err := os.OpenFile(Logfile(), os.O_WRONLY | os.O_CREATE | os.O_APPEND, 0666)
+		out, err := os.OpenFile(Logfile(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			panic(fmt.Sprintf("Cannot open log file %s: %s", Logfile(), err))
 		}
@@ -161,19 +168,74 @@ func run() int {
 	}
 	defer mutex.Release()
 
-	proc, err := os.StartProcess(args[0], args, &os.ProcAttr{
-		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-	})
-	if err != nil {
-		log.Panicf("Failed to start process: %s", err)
-	}
+	signals := watchSignals()
+	child, exit, errs := startProcess(args)
 
-	state, err := proc.Wait()
-	if err != nil {
-		log.Panicf("Could not determine exit status of process: %s", err)
+	for {
+		select {
+		case status := <-exit:
+			Debugf("Program existed with status code: %d", status)
+			return status
+		case err = <-errs:
+			log.Printf("Failed to fork/exec/wait on process: %s", err)
+			return 25
+		case sig := <-signals:
+			Debugf("Received signal: %v. Forwarding to process", sig)
+			child.Signal(sig)
+		}
 	}
-	status := state.Sys().(syscall.WaitStatus)
-	return status.ExitStatus()
+	return 0 // will not happen
+}
+
+// Starts listening to signals that should quit the process.
+//
+// Returns a channel where received signals will be published
+func watchSignals() (sinals chan os.Signal) {
+	// Use a buffered channel so we don't miss a signal sent to it
+	// before we start listening (package signal will not block
+	// sending on this channel)
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals,
+		syscall.SIGQUIT,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+	)
+	return signals
+}
+
+// Starts a new process and wait()s for it to finish in a separate goroutine.
+//
+// The new process is added to a new group, different from the parent; this
+// avoids the behavior of pressing CTRL+C on a sherlock process and the SIGINT
+// being sent to sherlock's childs (because they are in the same group by default)
+//
+// Returns the child *os.Process; a channel that will receive the exit
+// status once the process is finished; and a channel that will receive
+// any error when creating or wait()ing on the process
+func startProcess(args []string) (child *os.Process, exit chan int, errs chan error) {
+	exit = make(chan int)
+	errs = make(chan error, 1)
+	child, err := os.StartProcess(
+		args[0], args,
+		&os.ProcAttr{
+			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
+			Sys:   &syscall.SysProcAttr{Setpgid: true},
+		},
+	)
+	if err != nil {
+		errs <- err
+		return child, exit, errs
+	}
+	go func() {
+		state, err := child.Wait()
+		if err != nil {
+			errs <- err
+			return
+		}
+		status := state.Sys().(syscall.WaitStatus)
+		exit <- status.ExitStatus()
+	}()
+	return child, exit, errs
 }
 
 func main() {
