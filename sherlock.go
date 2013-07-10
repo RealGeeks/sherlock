@@ -38,12 +38,15 @@ import (
 
 var options = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
+const Version = "1.0"
+
 var (
 	once    = options.Bool("once", false, "Do not run the program if lock is acquired by somebody else")
 	key     = options.String("memcache-key", "mutex-default", "Key to be used as lock in memcache")
 	servers = options.String("memcache-servers", "127.0.0.1:11211", "Comma separared list of memcache servers")
 	verbose = options.Bool("verbose", false, "More verbose output")
 	logfile = options.String("logfile", "stdout", "File to write log messages.")
+	showver = options.Bool("version", false, "Show version")
 )
 
 func init() {
@@ -51,14 +54,14 @@ func init() {
 }
 
 func Usage() {
-	fmt.Fprintf(os.Stderr, "%s: Distributed mutex using memcache.\n\n"+
+	fmt.Fprintf(os.Stderr, "%s %s: Distributed mutex using memcache.\n\n"+
 		"Given the same script on multiple servers, %s ensures only one\n"+
 		"will run at a given time. Particularly useful with cronjobs.\n\n"+
 		"Usage example:\n\n"+
 		"  $ %s /bin/date -u\n\n"+
 		"Documentation and source code at: http://github.com/realgeeks/sherlock\n\n"+
 		"Options:\n",
-		os.Args[0], os.Args[0], os.Args[0])
+		os.Args[0], Version, os.Args[0], os.Args[0])
 	options.PrintDefaults()
 }
 
@@ -76,6 +79,10 @@ func Servers() []string {
 
 func Logfile() string {
 	return *logfile
+}
+
+func ShowVersion() bool {
+	return *showver
 }
 
 func Debug(v ...interface{}) {
@@ -134,6 +141,11 @@ func (ml *MemcLock) Release() {
 
 func run() int {
 	options.Parse(os.Args[1:])
+
+	if ShowVersion() {
+		fmt.Fprintf(os.Stderr, "%s %s\n", os.Args[0], Version)
+		return 0
+	}
 
 	if Logfile() != "stdout" {
 		out, err := os.OpenFile(Logfile(), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
