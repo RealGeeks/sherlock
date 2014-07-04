@@ -23,12 +23,15 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/bradfitz/gomemcache/memcache"
+	"io"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
 	"runtime/debug"
 	"strings"
@@ -45,9 +48,12 @@ var (
 	key     = options.String("memcache-key", "mutex-default", "Key to be used as lock in memcache")
 	servers = options.String("memcache-servers", "127.0.0.1:11211", "Comma separared list of memcache servers")
 	verbose = options.Bool("verbose", false, "More verbose output")
-	logfile = options.String("logfile", "stdout", "File to write log messages.")
+	logfile = options.String("logfile", "stdout", "File to write log messages. Program stdout and stderr will be written here too")
 	showver = options.Bool("version", false, "Show version")
 )
+
+// exit status when failed to run subprocess
+const errStatus = 25
 
 func init() {
 	options.Usage = Usage
@@ -180,20 +186,29 @@ func run() int {
 	}
 	defer mutex.Release()
 
+	// sherlock will listen to some signals and forward them
+	// to underlying process
 	signals := watchSignals()
-	child, exit, errs := startProcess(args)
+
+	proc, err := newProcess(args)
+	if err != nil {
+		log.Printf("Failed to start process: %s", err)
+		return errStatus
+	}
 
 	for {
 		select {
-		case status := <-exit:
-			Debugf("Program existed with status code: %d", status)
-			return status
-		case err = <-errs:
-			log.Printf("Failed to fork/exec/wait on process: %s", err)
-			return 25
 		case sig := <-signals:
 			Debugf("Received signal: %v. Forwarding to process", sig)
-			child.Signal(sig)
+			proc.Signal(sig)
+		case <-proc.Wait():
+			if proc.err != nil {
+				log.Printf("Process execution failed: %s", proc.err)
+			}
+			log.Printf("Program stdout:\n%s", proc.stdout)
+			log.Printf("Program stderr:\n%s", proc.stderr)
+			Debugf("Program exited with status code: %d", proc.status)
+			return proc.status
 		}
 	}
 	return 0 // will not happen
@@ -215,39 +230,80 @@ func watchSignals() (sinals chan os.Signal) {
 	return signals
 }
 
-// Starts a new process and wait()s for it to finish in a separate goroutine.
+// process wraps a exec.Cmd execution and keeps it's exit
+// status, stdout and stderr
 //
-// The new process is added to a new group, different from the parent; this
-// avoids the behavior of pressing CTRL+C on a sherlock process and the SIGINT
-// being sent to sherlock's childs (because they are in the same group by default)
+// err will be populated with an error if Wait() fails
+type process struct {
+	cmd            *exec.Cmd
+	status         int
+	err            error
+	stdout, stderr io.Reader
+	finished       chan struct{}
+}
+
+// newProcess creates a new process, starts it and wait for it to finish
+// is a separate goroutine
 //
-// Returns the child *os.Process; a channel that will receive the exit
-// status once the process is finished; and a channel that will receive
-// any error when creating or wait()ing on the process
-func startProcess(args []string) (child *os.Process, exit chan int, errs chan error) {
-	exit = make(chan int)
-	errs = make(chan error, 1)
-	child, err := os.StartProcess(
-		args[0], args,
-		&os.ProcAttr{
-			Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
-			Sys:   &syscall.SysProcAttr{Setpgid: true},
-		},
-	)
-	if err != nil {
-		errs <- err
-		return child, exit, errs
+// Returns error process fails to start
+//
+// Process is added to a new group. If CTRL+C is pressed in a shell it sends
+// SIGINT to all process in that group, and the subprocess is added to the
+// same group by default. I don't want that, I want sherlock to send termination
+// signals to it's subprocess.
+func newProcess(args []string) (*process, error) {
+	var out, err bytes.Buffer
+
+	proc := &process{
+		cmd:      exec.Command(args[0], args[1:]...),
+		stdout:   &out, // process uses as io.Reader
+		stderr:   &err,
+		finished: make(chan struct{}, 1),
 	}
+	proc.cmd.SysProcAttr = &syscall.SysProcAttr{
+		Setpgid: true, // add process to new group, different than sherlock's
+	}
+	proc.cmd.Stdout = &out // cmd uses as io.Writer
+	proc.cmd.Stderr = &err
+
+	if err := proc.cmd.Start(); err != nil {
+		return nil, err
+	}
+
 	go func() {
-		state, err := child.Wait()
-		if err != nil {
-			errs <- err
-			return
+		if err := proc.cmd.Wait(); err != nil {
+			proc.err = err
 		}
-		status := state.Sys().(syscall.WaitStatus)
-		exit <- status.ExitStatus()
+		proc.storeStatus()
+		proc.done()
 	}()
-	return child, exit, errs
+
+	return proc, nil
+}
+
+// Signal sends a signal to the process
+func (p *process) Signal(sig os.Signal) error {
+	return p.cmd.Process.Signal(sig)
+}
+
+// Wait returns a channel where caller should receive from
+// that indicates when the process has finished
+//
+// It returns a channel instead of just block to be used in
+// a select
+func (p *process) Wait() <-chan struct{} {
+	return p.finished
+}
+
+func (p *process) done() {
+	p.finished <- struct{}{}
+}
+
+// storeStatus saves the exit status of process. Called when
+// process has finished
+func (p *process) storeStatus() {
+	status := p.cmd.ProcessState.Sys().(syscall.WaitStatus)
+	p.status = status.ExitStatus()
 }
 
 func main() {
