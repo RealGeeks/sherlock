@@ -41,7 +41,7 @@ import (
 
 var options = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 
-const Version = "1.0"
+const Version = "1.1"
 
 var (
 	once    = options.Bool("once", false, "Do not run the program if lock is acquired by somebody else")
