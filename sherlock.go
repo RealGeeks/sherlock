@@ -64,7 +64,8 @@ func Usage() {
 		"Given the same script on multiple servers, %s ensures only one\n"+
 		"will run at a given time. Particularly useful with cronjobs.\n\n"+
 		"Usage example:\n\n"+
-		"  $ %s /bin/date -u\n\n"+
+		"  $ %s -verbose /bin/date -u\n\n"+
+		"Note that -verbose is a sherlock flag while -u is given to /bin/date\n\n"+
 		"Documentation and source code at: http://github.com/realgeeks/sherlock\n\n"+
 		"Options:\n",
 		os.Args[0], Version, os.Args[0], os.Args[0])
@@ -145,8 +146,15 @@ func (ml *MemcLock) Release() {
 	ml.memc.Delete(Key())
 }
 
-func run() int {
-	options.Parse(os.Args[1:])
+// run executes the process and manages it.
+//
+// args must be the same format as os.Args.
+func run(args []string) int {
+
+	// parse sherlock flags, don't give program name (sherlock).
+	// the real program to execute should be after all sherlock flags
+	// and will accessible as options.Args()
+	options.Parse(args[1:])
 
 	if ShowVersion() {
 		fmt.Fprintf(os.Stderr, "%s %s\n", os.Args[0], Version)
@@ -169,11 +177,13 @@ func run() int {
 		}
 	}()
 
-	args := options.Args()
-	if len(args) == 0 {
+	// options.Args() are the arguments after all sherlock flags are
+	// parsed, which means: the program to run
+	programArgs := options.Args()
+	if len(programArgs) == 0 {
 		log.Fatal("No program specified. See -help.")
 	}
-	log.Printf("Running %v", args)
+	log.Printf("Running %v", programArgs)
 
 	mutex := NewMemcLock()
 	err := mutex.Acquire()
@@ -190,7 +200,7 @@ func run() int {
 	// to underlying process
 	signals := watchSignals()
 
-	proc, err := newProcess(args)
+	proc, err := newProcess(programArgs)
 	if err != nil {
 		log.Printf("Failed to start process: %s", err)
 		return errStatus
@@ -307,5 +317,5 @@ func (p *process) storeStatus() {
 }
 
 func main() {
-	os.Exit(run())
+	os.Exit(run(os.Args))
 }
